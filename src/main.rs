@@ -47,7 +47,7 @@ fn main() {
         hasher.update(&buffer[payload_start_idx..]);
 
         // if the lenght of the received payload is not equal to the expected - data has been read in its entirety
-        if buffer.len() < range_increment { break }
+        if (&buffer[payload_start_idx..]).len() < range_increment { break }
 
         range += range_increment;
     }
