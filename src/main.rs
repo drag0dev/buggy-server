@@ -4,12 +4,26 @@ use std::{
 };
 use sha2::{Sha256, Digest};
 
+fn get_content_len(headers: &[u8]) -> u64 {
+    String::from_utf8_lossy(headers)
+        .split("\r\n")
+        .find(|line|{ line.contains("Content-Length") })
+        .expect("missing Contenet-Lenght header")
+        .split(": ")
+        .nth(1)
+        .expect("malformed Content-Length header")
+        .parse::<u64>()
+        .expect("malformed Content-Length value")
+}
+
 fn main() {
     let mut hasher = Sha256::new();
 
-    let range_increment = 64 * 1024;
-    let mut range = range_increment;
-    loop {
+    let mut total_len = 1024*1024;
+    let mut confirmed_total_len = false;
+    let mut start = 0;
+
+    while start < total_len {
         let mut stream = TcpStream::connect("localhost:8080").expect("error connecting to the buggy server");
         let request = format!(
             "GET / HTTP/1.1\r\n\
@@ -17,7 +31,7 @@ fn main() {
              Range: bytes={}-{}\r\n\
              Connection: close\r\n\
              \r\n",
-             range - range_increment, range
+             start, total_len
         );
         stream.write_all(request.as_bytes()).expect("error sending request");
 
@@ -46,10 +60,11 @@ fn main() {
 
         hasher.update(&buffer[payload_start_idx..]);
 
-        // if the lenght of the received payload is not equal to the expected - data has been read in its entirety
-        if (&buffer[payload_start_idx..]).len() < range_increment { break }
-
-        range += range_increment;
+        if !confirmed_total_len {
+            total_len = get_content_len(&buffer[..payload_start_idx]);
+            confirmed_total_len = true;
+        }
+        start += buffer[payload_start_idx..].len() as u64;
     }
 
     println!("SHA-256 hash of the data: {:x}", hasher.finalize());
